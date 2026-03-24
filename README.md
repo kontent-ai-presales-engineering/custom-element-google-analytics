@@ -1,190 +1,182 @@
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
-
 [![Discord][discord-shield]][discord-url]
 
+# GA4 Hybrid Dashboard for Kontent.ai
 
-# GA4 Analytics Custom Element for Kontent.ai
-
-This custom element displays Google Analytics 4 data (page views and active users) for the current content item directly inside the Kontent.ai editing UI.
-
-It fetches live stats from a serverless function using the item's codename and renders a clean dashboard that content editors can see without leaving the app.
+A "Mission Control" style sidebar dashboard for Kontent.ai editors. It shows **real-time and historical Google Analytics 4 data** for the individual content item currently open — without the editor ever leaving the CMS.
 
 ---
 
-## JSON Parameters (Custom App Configuration)
+## Features
 
-When adding this element to a **Content type** in Kontent.ai, you must provide the following JSON in the **JSON parameters** field of the Custom element settings:
+- **Live Pulse** — Active users on the specific page right now (last 30 mins), with an animated indicator.
+- **Engagement Metrics** — Total views, unique users, and average foreground read time over 30 days.
+- **Traffic Insights** — Top 3 referral sources and top 3 countries with inline bar charts.
+- **Smart Filtering** — Handles long URL slugs by using a `BEGINS_WITH` match to bypass the GA4 36-character User Property limit.
+- **Zero-config UI** — Pure HTML/CSS/JS with no build step; drop `public/index.html` anywhere and it works.
+
+---
+
+## Architecture
+
+```
+Browser (Kontent.ai sidebar)
+        │  CustomElement.init → reads item codename
+        │  fetch ?codename=my_article
+        ▼
+api/get-stats.js  (Vercel Serverless Function)
+        │  1. Resolve slug from Kontent.ai Delivery API
+        │  2. Promise.allSettled([historical, realtime])
+        │     ├── GA4 Reporting API  (30 days)
+        │     └── GA4 Realtime API   (30 mins, BEGINS_WITH filter)
+        │  3. Aggregate rows → totals, topSources, topCountries
+        └── JSON response
+```
+
+---
+
+## Setup
+
+### 1. Google Analytics 4 — Register Custom Dimensions
+
+In your GA4 property go to **Admin → Custom Definitions** and create two custom dimensions:
+
+| Name | Scope | Parameter / Property |
+|---|---|---|
+| Current Page Path | **User** | `current_page_path` |
+| Kontent Codename | **Event** | `kontent_codename` |
+
+### 2. Website Tracking
+
+Send the values from your website's `gtag` configuration:
+
+```js
+// Set once per page load — populates the Realtime filter
+gtag('set', 'user_properties', {
+  current_page_path: window.location.pathname,
+});
+
+// Send with every page_view — populates the Historical filter
+gtag('event', 'page_view', {
+  kontent_codename: 'your_item_codename',
+});
+```
+
+### 3. Deploy the Backend (Vercel)
+
+1. Push this repo to GitHub and import it in [Vercel](https://vercel.com).
+2. Set the following **Environment Variables** in your Vercel project settings:
+
+| Variable | Description |
+|---|---|
+| `GA_PROPERTY_ID` | Your 9-digit GA4 Property ID |
+| `GA_SERVICE_ACCOUNT_KEY` | The full JSON content of your Google Service Account key file (as a single string) |
+| `VITE_ENVIRONMENT_ID` | Your Kontent.ai Project/Environment ID |
+
+> **Service Account permissions:** The service account must have the **Viewer** role on your GA4 property (Admin → Property Access Management).
+
+Copy `.env.example` to `.env` for local development.
+
+### 4. Configure Kontent.ai
+
+1. Go to **Collections → Custom Elements** (or add it inside a Content Type).
+2. Create a new Custom Element pointing to your hosted `public/index.html`.
+3. Set the **JSON Parameters**:
 
 ```json
 {
-  "apiEndpoint": "https://your-deployment.vercel.app/api/get-stats"
+  "apiEndpoint": "https://your-vercel-app.vercel.app/api/get-stats"
 }
 ```
 
-| Parameter | Required | Description |
-|---|---|---|
-| `apiEndpoint` | Yes | Full URL of the serverless function that accepts a `?codename=` query parameter. |
+4. Add the Custom Element to the desired Content Type sidebar.
 
-The element calls `GET {apiEndpoint}?codename={item_codename}` and expects this JSON response:
+---
+
+## URL Resolution
+
+The `api/get-stats.js` file contains a `SLUG_MAP` object that maps Kontent.ai content type codenames to URL patterns:
+
+```js
+const SLUG_MAP = {
+  article:    (codename) => `/research/${codename.replace(/_/g, '-')}`,
+  page:       (codename) => `/${codename.replace(/_/g, '-')}`,
+  service:    (codename) => `/services/${codename.replace(/_/g, '-')}`,
+  blog_post:  (codename) => `/blog/${codename.replace(/_/g, '-')}`,
+  case_study: (codename) => `/case-studies/${codename.replace(/_/g, '-')}`,
+};
+```
+
+Add your own content types here. If a type is not found, the codename is used as a fallback path.
+
+---
+
+## Technical Note: The 36-Character Limit
+
+Google Analytics truncates **User Property** values (used for Real-time data) at **36 characters**. For a slug like `/research/managing-pensions-for-the-future-2026` that's a problem.
+
+This integration works around it by:
+
+1. Extracting only the first 36 characters of the slug: `slug.substring(0, 36)`.
+2. Using a `BEGINS_WITH` match type in the Realtime API filter instead of `EXACT`.
+
+This ensures the dashboard reliably finds active users even on pages with long URL slugs.
+
+---
+
+## API Response Shape
+
+`GET {apiEndpoint}?codename={item_codename}`
 
 ```json
 {
   "slug": "/research/my-article",
   "historical": {
     "views": 1234,
-    "users": 890
+    "users": 890,
+    "avgEngagementTime": "2m 14s",
+    "avgEngagementSeconds": 134,
+    "topSources": [
+      { "source": "google", "views": 560 },
+      { "source": "(direct)", "views": 210 },
+      { "source": "linkedin.com", "views": 88 }
+    ],
+    "topCountries": [
+      { "country": "United States", "views": 400 },
+      { "country": "United Kingdom", "views": 180 },
+      { "country": "Germany", "views": 95 }
+    ]
   },
   "realtime": {
-    "views": 3,
-    "activeUsers": 1
+    "activeUsers": 3
   },
   "gaLink": "https://analytics.google.com/analytics/web/#/p12345/..."
 }
 ```
 
-| Field | Source | Description |
-|---|---|---|
-| `historical.views` | GA4 Reporting API | Page views over the past 30 days — shown in the **30 Day Performance** card |
-| `historical.users` | GA4 Reporting API | Unique users over the past 30 days |
-| `realtime.activeUsers` | GA4 Real-Time API | Users active on the page right now (last 30 min) — shown in the **Live Now** card |
-| `realtime.views` | GA4 Real-Time API | Page views in the last 30 minutes |
-| `gaLink` | — | Optional. If present, a **View Full Report in GA4** button appears |
-| `slug` | — | Resolved URL path for the content item |
+---
 
-> **Historical vs Real-time:** Historical data is processed by GA4 with a 24–48 hour delay, so recent traffic may not appear immediately. Real-time data reflects the last 30 minutes and updates each time the element loads. A realtime count of 0 is normal — it simply means nobody is on the page right now.
+## Local Development
 
-You can use a different endpoint URL per content type — just update the JSON parameters for each element instance.
+```bash
+# Install dependencies
+npm ci
 
-If `apiEndpoint` is missing or not a string, the element shows a configuration error before making any network request.
+# Start Vite dev server (React frontend)
+npm run dev
+
+# Test the serverless function locally with Vercel CLI
+npx vercel dev
+```
 
 ---
 
-# Getting Started
+## License
 
-## Running the project
-
-The integration is created with [Vite](https://vitejs.dev/). 
-
-1. Install dependencies with `npm ci`.
-2. Run a local development server with `npm run dev`.
-3. To deploy the element you can use the output of running `npm run build` command that you can find in the `dist` folder.
-
-See [Vite guide](https://vitejs.dev/guide/#command-line-interface) for more available commands.
-
-## Define your Element's API
-
-There are two main things that you'll need to define.
-* What configuration will your custom element need. (This is provided in the configuration when adding the custom element into a content type)
-* What value will the custom element save. In what format (the value needs to be serialized into string).
-
-You can define the shape of your configuration in the `src/customElement/config.ts` file along with a validation function that will show the user an error when the provided configuration is not valid.
-
-In the same way you can define the shape of your value in the `src/customElement/value.ts` file along with a parsing function from a string. Usually, the most flexible format is json serialized into the string.
-
-## Define your Element's height handling
-
-The width of the custom element is always the full width of the editing element in the Kontent.ai app. However, the height can be defined by the element itself.
-In the `src/main.tsx` file you can find the usage of the `CustomElementContext` where you can define the height of your element.
-It can either be a specific size in pixels, `"default"` to use the default value or `"dynamic"` to resize the element based on the height of the element's body element.
-
-## Write your Element
-
-You can start building the element in the `src/IntegrationApp.tsx` file where you can find example usage of several utilities defined in this repository that might come in useful.
-
-## Utilities in this repository
-
-### useConfig
-
-Use this hook to get the configuration provided for this custom element.
-The configuration will be valid based on the validation function you defined in `src/customElement/config.ts` and will be of the `Config` type also defined in the file.
-
-### useValue
-
-Use this hook to get the current value of the element and a function to update the value.
-The value will be parsed using the function defined in `src/customElement/value.ts` and will be of the `Value` type also defined in the file.
-Example:
-```ts
-const [value, setValue] = useValue();
-```
-
-### useIsDisabled
-
-This hook indicates whether your element should appear disabled. (e.g. when the item is published or the user doesn't have permission to modify the item)
-It subscribes to changes so the returned value will always be up-to-date.
-
-### useEnvironmentId
-
-Returns the environment id of this element's content item.
-
-### useItemInfo
-
-Gets information about the element's content item. 
-See the `ItemDetail` type in the `src/customElement/types/customElement.d.ts` file for details of available item information.
-
-### useVariantInfo
-
-Gets the element's language id and codename.
-
-### useElements
-
-Use this hook to get values of the specified elements (accepts element codenames). 
-The hook subscribes to element changes so the returned values will always be up-to-date.
-
-### promptToSelectItems
-
-Use this function to prompt the user to select content items.
-You can specify whether they should select only one or several.
-The function returns details of the selected items.
-
-### promptToSelectAssets
-
-Use this function to prompt the user to select assets.
-You can specify whether they should select only one or several and whether they should only select images or any asset.
-The function returns details of the selected assets.
-
-# Structure of the Custom Element
-
-## Static resources in the `index.html` file
-
-Every Kontent.ai custom element needs the [Custom Element API](https://kontent.ai/learn/reference/custom-elements-js-api/) to work properly.
-This custom element is no exception and you can find it linked in the `index.html` template in the root of the repository.
-
-Additionally, you can find there linked a CSS file from the `public` folder.
-This contains Kontent.ai styling that you can leverage to make your custom element look similar to the rest of the Kontent.ai app.
-It also includes Kontent.ai font.
-
-## `CustomElementContext`
-
-This is the core of the connection to the Custom Element API.
-You can find here the call to the `CustomElement.init` function that initializes the custom element and populates the React context with useful information like the element's value, config and so on.
-It also handles handles height of the custom element using the supplied prop `height`.
-
-## `selectors.ts`
-
-Here you can find the implementation of most of the wrappers around the Custom Element API.
-
-# Contributing
-
-For Contributing please see  [`CONTRIBUTING.md`](CONTRIBUTING.md) for more information.
-
-# License
-
-Distributed under the MIT License. See [`LICENSE.md`](./LICENSE.md) for more information.
+Distributed under the MIT License. See [LICENSE.md](./LICENSE.md) for more information.
 
 
-[contributors-shield]: https://img.shields.io/github/contributors/kontent-ai/custom-element-starter-react.svg?style=for-the-badge
-[contributors-url]: https://github.com/kontent-ai/custom-element-starter-react/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/kontent-ai/custom-element-starter-react.svg?style=for-the-badge
-[forks-url]: https://github.com/kontent-ai/custom-element-starter-react/network/members
-[stars-shield]: https://img.shields.io/github/stars/kontent-ai/custom-element-starter-react.svg?style=for-the-badge
-[stars-url]: https://github.com/kontent-ai/custom-element-starter-react/stargazers
-[issues-shield]: https://img.shields.io/github/issues/kontent-ai/custom-element-starter-react.svg?style=for-the-badge
-[issues-url]:https://github.com/kontent-ai/custom-element-starter-react/issues
-[license-shield]: https://img.shields.io/github/license/kontent-ai/custom-element-starter-react.svg?style=for-the-badge
-[license-url]:https://github.com/kontent-ai/custom-element-starter-react/blob/master/LICENSE.md
+[license-shield]: https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge
+[license-url]: ./LICENSE.md
 [discord-shield]: https://img.shields.io/discord/821885171984891914?color=%237289DA&label=Kontent.ai%20Discord&logo=discord&style=for-the-badge
 [discord-url]: https://discord.com/invite/SKCxwPtevJ
