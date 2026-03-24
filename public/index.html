@@ -8,7 +8,7 @@
   <!-- Kontent.ai Custom Element SDK -->
   <script src="https://app.kontent.ai/js-api/custom-element/v1/custom-element.min.js"></script>
 
-  <!-- Inter font -->
+  <!-- Inter — Kontent.ai's UI font -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -22,26 +22,26 @@
     body {
       font-family: 'Inter', sans-serif;
       font-size: 13px;
-      color: #1d1d1d;
-      background: #f5f5f5;
+      color: #2b3547;          /* Kontent.ai primary text */
+      background: #f4f7f9;     /* Kontent.ai panel background */
       padding: 12px;
       line-height: 1.5;
     }
 
     /* ------------------------------------------------------------------ */
-    /* Layout                                                               */
+    /* Dashboard layout                                                     */
     /* ------------------------------------------------------------------ */
     .dashboard { display: flex; flex-direction: column; gap: 10px; }
 
     /* ------------------------------------------------------------------ */
-    /* Live header                                                          */
+    /* Live Now card                                                        */
     /* ------------------------------------------------------------------ */
-    .live-header {
+    .live-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #ffffff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #dce3ec;
       border-radius: 8px;
       padding: 10px 14px;
     }
@@ -50,44 +50,50 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      font-size: 11px;
       font-weight: 600;
-      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #6b6b6b;
+      letter-spacing: 0.06em;
+      color: #6b7a99;
     }
 
-    /* Pulsing red dot */
+    /* Pulsing green dot */
     .pulse-dot {
-      width: 8px;
-      height: 8px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
-      background: #e53935;
-      box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.4);
-      animation: pulse 1.8s infinite;
+      background: #22c55e;
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45);
+      animation: pulse-green 1.8s ease-out infinite;
+      flex-shrink: 0;
     }
 
-    @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.4); }
-      70%  { box-shadow: 0 0 0 8px rgba(229, 57, 53, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); }
+    @keyframes pulse-green {
+      0%   { box-shadow: 0 0 0 0   rgba(34, 197, 94, 0.45); }
+      70%  { box-shadow: 0 0 0 9px rgba(34, 197, 94, 0);    }
+      100% { box-shadow: 0 0 0 0   rgba(34, 197, 94, 0);    }
     }
 
     .live-count {
-      font-size: 22px;
-      font-weight: 700;
-      color: #1d1d1d;
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
     }
 
-    .live-count span {
+    .live-count__number {
+      font-size: 24px;
+      font-weight: 700;
+      color: #2b3547;
+      line-height: 1;
+    }
+
+    .live-count__label {
       font-size: 12px;
-      font-weight: 400;
-      color: #6b6b6b;
-      margin-left: 4px;
+      color: #6b7a99;
     }
 
     /* ------------------------------------------------------------------ */
-    /* 3-column stats grid                                                  */
+    /* Stats grid (3 columns)                                               */
     /* ------------------------------------------------------------------ */
     .stats-grid {
       display: grid;
@@ -97,28 +103,29 @@
 
     .stat-card {
       background: #ffffff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #dce3ec;
       border-radius: 8px;
       padding: 10px 12px;
     }
 
-    .stat-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: #6b6b6b;
+    .stat-card__label {
+      font-size: 10px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.06em;
+      color: #6b7a99;
       margin-bottom: 4px;
     }
 
-    .stat-value {
+    .stat-card__value {
       font-size: 20px;
       font-weight: 700;
-      color: #1d1d1d;
+      color: #2b3547;
+      line-height: 1.2;
     }
 
     /* ------------------------------------------------------------------ */
-    /* Insight lists (Sources / Countries)                                  */
+    /* Insight lists (Sources & Countries)                                  */
     /* ------------------------------------------------------------------ */
     .insights-row {
       display: grid;
@@ -128,99 +135,104 @@
 
     .insight-card {
       background: #ffffff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #dce3ec;
       border-radius: 8px;
       padding: 10px 12px;
     }
 
-    .insight-title {
-      font-size: 11px;
+    .insight-card__title {
+      font-size: 10px;
       font-weight: 600;
-      color: #6b6b6b;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 8px;
+      letter-spacing: 0.06em;
+      color: #6b7a99;
+      margin-bottom: 9px;
     }
 
-    .insight-list { display: flex; flex-direction: column; gap: 6px; }
+    .insight-list { display: flex; flex-direction: column; gap: 7px; }
 
     .insight-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 8px;
     }
 
-    .insight-name {
+    .insight-row__name {
       font-size: 12px;
       font-weight: 500;
-      color: #1d1d1d;
+      color: #2b3547;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 110px;
+      min-width: 0;
+      flex: 0 0 90px;
     }
 
-    .insight-bar-wrap {
+    .insight-row__bar-wrap {
       flex: 1;
       height: 4px;
-      background: #f0f0f0;
+      background: #edf1f7;
       border-radius: 2px;
       overflow: hidden;
     }
 
-    .insight-bar {
+    .insight-row__bar {
       height: 100%;
       border-radius: 2px;
-      background: #3b5adb;
+      background: #5569ff;      /* Kontent.ai accent blue */
+      transition: width 0.4s ease;
     }
 
-    .insight-count {
+    .insight-row__count {
       font-size: 11px;
       font-weight: 600;
-      color: #6b6b6b;
-      min-width: 28px;
+      color: #6b7a99;
+      min-width: 30px;
       text-align: right;
+      flex-shrink: 0;
     }
 
     /* ------------------------------------------------------------------ */
-    /* GA4 link                                                             */
+    /* GA4 deep-link                                                        */
     /* ------------------------------------------------------------------ */
-    .ga-link-wrap { text-align: center; }
+    .ga-link-wrap { text-align: center; padding-top: 2px; }
 
     .ga-link {
-      display: inline-block;
       font-size: 12px;
       font-weight: 500;
-      color: #3b5adb;
+      color: #5569ff;
       text-decoration: none;
     }
 
     .ga-link:hover { text-decoration: underline; }
 
     /* ------------------------------------------------------------------ */
-    /* States: loading / error                                              */
+    /* Loading / error states                                               */
     /* ------------------------------------------------------------------ */
     .state-box {
       background: #ffffff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #dce3ec;
       border-radius: 8px;
-      padding: 20px;
+      padding: 24px 16px;
       text-align: center;
-      color: #6b6b6b;
+      color: #6b7a99;
       font-size: 13px;
     }
 
-    .state-box.error { border-color: #ffcdd2; color: #c62828; background: #fff8f8; }
+    .state-box--error {
+      border-color: #fecdd3;
+      background: #fff8f8;
+      color: #b91c1c;
+    }
 
     .spinner {
       width: 20px;
       height: 20px;
-      border: 2px solid #e0e0e0;
-      border-top-color: #3b5adb;
+      border: 2px solid #dce3ec;
+      border-top-color: #5569ff;
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 8px;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 10px;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -230,9 +242,19 @@
   <div id="root"></div>
 
   <script>
+    'use strict';
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Format raw engagement seconds into a human-readable string.
+     * Examples: 134 → "2m 14s"   |   45 → "45s"   |   0 → "0s"
+     *
+     * @param {number} totalSeconds
+     * @returns {string}
+     */
     function formatSeconds(totalSeconds) {
       const s = Math.round(totalSeconds);
       const m = Math.floor(s / 60);
@@ -240,111 +262,157 @@
       return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
     }
 
+    /**
+     * Compact number formatter.
+     * 1 200 000 → "1.2M"  |  14 500 → "14.5k"  |  999 → "999"
+     *
+     * @param {number} n
+     * @returns {string}
+     */
     function formatNumber(n) {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
       return String(n);
     }
 
-    function el(tag, cls, text) {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (text !== undefined) e.textContent = text;
-      return e;
+    /**
+     * Thin wrapper around document.createElement.
+     *
+     * @param {string} tag
+     * @param {string} [className]
+     * @param {string} [text]
+     * @returns {HTMLElement}
+     */
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
     }
 
     // -----------------------------------------------------------------------
-    // Render helpers
+    // State renderers
     // -----------------------------------------------------------------------
+
     function renderLoading() {
       const box = el('div', 'state-box');
-      box.innerHTML = '<div class="spinner"></div>Fetching analytics…';
+      box.innerHTML = '<div class="spinner"></div>Fetching analytics\u2026';
       return box;
     }
 
     function renderError(message) {
-      const box = el('div', 'state-box error');
+      const box = el('div', 'state-box state-box--error');
       box.textContent = message;
       return box;
     }
 
+    // -----------------------------------------------------------------------
+    // Component: Top 3 insight list (Sources or Countries)
+    // -----------------------------------------------------------------------
+
+    /**
+     * @param {Array<{views: number}>} items  - Already sorted, up to 3 entries.
+     * @param {string}                key    - Property name to display ("source" or "country").
+     * @returns {HTMLElement}
+     */
     function renderInsightList(items, key) {
       const list = el('div', 'insight-list');
-      const max = items[0]?.views ?? 1;
+      const maxViews = items[0]?.views ?? 1;
+
       for (const item of items) {
-        const row = el('div', 'insight-row');
-        const name = el('div', 'insight-name', item[key]);
-        const barWrap = el('div', 'insight-bar-wrap');
-        const bar = el('div', 'insight-bar');
-        bar.style.width = `${Math.round((item.views / max) * 100)}%`;
+        const row      = el('div', 'insight-row');
+        const name     = el('div', 'insight-row__name', item[key]);
+        const barWrap  = el('div', 'insight-row__bar-wrap');
+        const bar      = el('div', 'insight-row__bar');
+        const count    = el('div', 'insight-row__count', formatNumber(item.views));
+
+        bar.style.width = `${Math.round((item.views / maxViews) * 100)}%`;
         barWrap.appendChild(bar);
-        const count = el('div', 'insight-count', formatNumber(item.views));
+
         row.appendChild(name);
         row.appendChild(barWrap);
         row.appendChild(count);
         list.appendChild(row);
       }
+
       return list;
     }
 
+    // -----------------------------------------------------------------------
+    // Component: Full dashboard
+    // -----------------------------------------------------------------------
+
+    /**
+     * @param {{ historical: object, realtime: object, gaLink: string }} data
+     * @returns {HTMLElement}
+     */
     function renderDashboard(data) {
       const { historical, realtime, gaLink } = data;
-
       const dash = el('div', 'dashboard');
 
-      // --- Live header ---
-      const liveHeader = el('div', 'live-header');
+      // ── Live Now card ──────────────────────────────────────────────────
+      const liveCard  = el('div', 'live-card');
       const liveLabel = el('div', 'live-label');
       liveLabel.innerHTML = '<div class="pulse-dot"></div>Live Now';
-      const liveCount = el('div', 'live-count');
-      liveCount.innerHTML = `${realtime.activeUsers}<span>active user${realtime.activeUsers !== 1 ? 's' : ''}</span>`;
-      liveHeader.appendChild(liveLabel);
-      liveHeader.appendChild(liveCount);
-      dash.appendChild(liveHeader);
 
-      // --- Stats grid ---
+      const liveCount = el('div', 'live-count');
+      const liveNum   = el('span', 'live-count__number', String(realtime.activeUsers));
+      const liveLbl   = el('span', 'live-count__label',
+        `active user${realtime.activeUsers !== 1 ? 's' : ''}`);
+      liveCount.appendChild(liveNum);
+      liveCount.appendChild(liveLbl);
+
+      liveCard.appendChild(liveLabel);
+      liveCard.appendChild(liveCount);
+      dash.appendChild(liveCard);
+
+      // ── Stats grid ─────────────────────────────────────────────────────
       const grid = el('div', 'stats-grid');
       const stats = [
-        { label: '30-Day Views', value: formatNumber(historical.views) },
-        { label: 'Unique Users', value: formatNumber(historical.users) },
-        { label: 'Avg Read Time', value: historical.avgEngagementTime },
+        { label: '30-Day Views',      value: formatNumber(historical.views) },
+        { label: 'Unique Users',       value: formatNumber(historical.users) },
+        { label: 'Avg. Engagement',    value: historical.avgEngagementTime  },
       ];
+
       for (const s of stats) {
         const card = el('div', 'stat-card');
-        card.appendChild(el('div', 'stat-label', s.label));
-        card.appendChild(el('div', 'stat-value', s.value));
+        card.appendChild(el('div', 'stat-card__label', s.label));
+        card.appendChild(el('div', 'stat-card__value', s.value));
         grid.appendChild(card);
       }
       dash.appendChild(grid);
 
-      // --- Insights row ---
-      if (historical.topSources.length > 0 || historical.topCountries.length > 0) {
+      // ── Insight lists ──────────────────────────────────────────────────
+      const hasSources   = historical.topSources?.length   > 0;
+      const hasCountries = historical.topCountries?.length > 0;
+
+      if (hasSources || hasCountries) {
         const insightsRow = el('div', 'insights-row');
 
-        if (historical.topSources.length > 0) {
-          const sourceCard = el('div', 'insight-card');
-          sourceCard.appendChild(el('div', 'insight-title', 'Top Sources'));
-          sourceCard.appendChild(renderInsightList(historical.topSources, 'source'));
-          insightsRow.appendChild(sourceCard);
+        if (hasSources) {
+          const card = el('div', 'insight-card');
+          card.appendChild(el('div', 'insight-card__title', 'Top Sources'));
+          card.appendChild(renderInsightList(historical.topSources, 'source'));
+          insightsRow.appendChild(card);
         }
 
-        if (historical.topCountries.length > 0) {
-          const countryCard = el('div', 'insight-card');
-          countryCard.appendChild(el('div', 'insight-title', 'Top Countries'));
-          countryCard.appendChild(renderInsightList(historical.topCountries, 'country'));
-          insightsRow.appendChild(countryCard);
+        if (hasCountries) {
+          const card = el('div', 'insight-card');
+          card.appendChild(el('div', 'insight-card__title', 'Top Countries'));
+          card.appendChild(renderInsightList(historical.topCountries, 'country'));
+          insightsRow.appendChild(card);
         }
 
         dash.appendChild(insightsRow);
       }
 
-      // --- GA4 deep link ---
+      // ── GA4 deep-link ──────────────────────────────────────────────────
       if (gaLink) {
         const wrap = el('div', 'ga-link-wrap');
-        const link = el('a', 'ga-link', 'View full report in GA4 →');
-        link.href = gaLink;
+        const link = el('a', 'ga-link', 'View full report in GA4 \u2192');
+        link.href   = gaLink;
         link.target = '_blank';
-        link.rel = 'noopener noreferrer';
+        link.rel    = 'noopener noreferrer';
         wrap.appendChild(link);
         dash.appendChild(wrap);
       }
@@ -353,37 +421,42 @@
     }
 
     // -----------------------------------------------------------------------
-    // Bootstrap
+    // Bootstrap — CustomElement.init
     // -----------------------------------------------------------------------
     const root = document.getElementById('root');
 
     CustomElement.init(async (element) => {
-      const config = element.config ?? {};
+      const config      = element.config ?? {};
       const apiEndpoint = config.apiEndpoint;
 
+      // Config guard
       if (!apiEndpoint || typeof apiEndpoint !== 'string') {
-        root.appendChild(renderError('Configuration error: "apiEndpoint" is missing from the JSON parameters.'));
-        CustomElement.setHeight(60);
+        root.appendChild(
+          renderError('Configuration error: "apiEndpoint" is missing from JSON parameters.')
+        );
+        CustomElement.setHeight(80);
         return;
       }
 
+      // Show loading state immediately
       root.appendChild(renderLoading());
-      CustomElement.setHeight(120);
+      CustomElement.setHeight(100);
 
+      // Item codename guard
       const codename = element.item?.codename;
       if (!codename) {
         root.innerHTML = '';
-        root.appendChild(renderError('Could not determine the item codename.'));
-        CustomElement.setHeight(60);
+        root.appendChild(renderError('Could not determine the content item codename.'));
+        CustomElement.setHeight(80);
         return;
       }
 
       try {
-        const url = `${apiEndpoint}?codename=${encodeURIComponent(codename)}`;
+        const url      = `${apiEndpoint}?codename=${encodeURIComponent(codename)}`;
         const response = await fetch(url);
 
         if (!response.ok) {
-          throw new Error(`API returned ${response.status}: ${response.statusText}`);
+          throw new Error(`API responded with ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -391,14 +464,14 @@
         root.innerHTML = '';
         root.appendChild(renderDashboard(data));
 
-        // Let the browser paint, then measure and set height
+        // Measure the rendered height and resize the iframe accordingly.
         requestAnimationFrame(() => {
           CustomElement.setHeight(document.body.scrollHeight + 8);
         });
       } catch (err) {
         root.innerHTML = '';
         root.appendChild(renderError(`Failed to load analytics: ${err.message}`));
-        CustomElement.setHeight(60);
+        CustomElement.setHeight(80);
       }
     });
   </script>

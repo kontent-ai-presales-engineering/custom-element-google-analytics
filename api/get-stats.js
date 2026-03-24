@@ -2,42 +2,43 @@ import { BetaAnalyticsDataClient } from '@google-analytics/data';
 import { createDeliveryClient } from '@kontent-ai/delivery-sdk';
 
 // ---------------------------------------------------------------------------
-// URL mapping: Kontent.ai codename → production URL slug
-// Add every content type codename pattern you want to resolve here.
+// TYPE_URL_RESOLVERS
+// Maps a Kontent.ai content type codename to the live URL path for that item.
+// The resolver receives the item's own codename and returns a path string.
+// Add or adjust entries to match your website's routing conventions.
 // ---------------------------------------------------------------------------
-const SLUG_MAP = {
-  // Articles
-  article: (codename) => `/research/${codename.replace(/_/g, '-')}`,
-  // Pages
-  page: (codename) => `/${codename.replace(/_/g, '-')}`,
-  // Services
-  service: (codename) => `/services/${codename.replace(/_/g, '-')}`,
-  // Blog posts
-  blog_post: (codename) => `/blog/${codename.replace(/_/g, '-')}`,
-  // Case studies
-  case_study: (codename) => `/case-studies/${codename.replace(/_/g, '-')}`,
+const TYPE_URL_RESOLVERS = {
+  article:    (codename) => `/articles/${codename.replace(/_/g, '-')}`,
+  blog:       (codename) => `/blog/${codename.replace(/_/g, '-')}`,
+  page:       (codename) => `/${codename.replace(/_/g, '-')}`,
 };
 
-// Fallback: use the codename as the path directly
+/**
+ * Resolve the URL slug for a content item.
+ * Falls back to a plain /<codename> path when no resolver is registered.
+ *
+ * @param {string} codename  - The item's Kontent.ai codename.
+ * @param {string} contentType - The item's content type codename.
+ * @returns {string} Absolute path starting with "/".
+ */
 function resolveSlug(codename, contentType) {
-  const resolver = SLUG_MAP[contentType];
+  const resolver = TYPE_URL_RESOLVERS[contentType];
   return resolver ? resolver(codename) : `/${codename.replace(/_/g, '-')}`;
 }
 
 // ---------------------------------------------------------------------------
-// Google Analytics client (initialised lazily from env)
+// Clients
 // ---------------------------------------------------------------------------
+
+/** Build a GA4 Data client from the service-account key stored in env. */
 function getAnalyticsClient() {
   const keyJson = process.env.GA_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error('GA_SERVICE_ACCOUNT_KEY is not set');
-
   const credentials = JSON.parse(keyJson);
   return new BetaAnalyticsDataClient({ credentials });
 }
 
-// ---------------------------------------------------------------------------
-// Kontent.ai Delivery client
-// ---------------------------------------------------------------------------
+/** Build a Kontent.ai Delivery client from the environment ID stored in env. */
 function getDeliveryClient() {
   const environmentId = process.env.VITE_ENVIRONMENT_ID;
   if (!environmentId) throw new Error('VITE_ENVIRONMENT_ID is not set');
@@ -45,7 +46,7 @@ function getDeliveryClient() {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: format seconds → "Xm Ys"
+// Helper: format raw seconds into "Xm Ys"
 // ---------------------------------------------------------------------------
 function formatSeconds(totalSeconds) {
   const s = Math.round(totalSeconds);
@@ -55,10 +56,10 @@ function formatSeconds(totalSeconds) {
 }
 
 // ---------------------------------------------------------------------------
-// Main handler
+// Main Vercel handler
 // ---------------------------------------------------------------------------
 export default async function handler(req, res) {
-  // CORS headers so the Kontent.ai iframe can call this endpoint
+  // CORS — required so the Kontent.ai editor iframe can call this endpoint.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -67,6 +68,9 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // ------------------------------------------------------------------
+  // Guard: required query param
+  // ------------------------------------------------------------------
   const { codename } = req.query;
   if (!codename) {
     return res.status(400).json({ error: 'Missing required query parameter: codename' });
@@ -78,57 +82,67 @@ export default async function handler(req, res) {
   }
 
   // ------------------------------------------------------------------
-  // 1. Resolve the URL slug from Kontent.ai
+  // Step 1 — Resolve the content item's URL slug from Kontent.ai
   // ------------------------------------------------------------------
   let slug = `/${codename.replace(/_/g, '-')}`;
+
   try {
     const deliveryClient = getDeliveryClient();
     const response = await deliveryClient.item(codename).toPromise();
-    const item = response.data.item;
-    const contentType = item.system.type;
+    const contentType = response.data.item.system.type;
     slug = resolveSlug(codename, contentType);
   } catch {
-    // If Kontent.ai lookup fails, fall back to the derived slug — not fatal
-    console.warn(`Could not resolve slug from Kontent.ai for codename "${codename}". Using fallback.`);
+    // Non-fatal: fall back to the derived slug if Kontent.ai is unreachable
+    // or the item does not exist yet.
+    console.warn(
+      `Could not resolve slug from Kontent.ai for codename "${codename}". Using fallback: "${slug}"`
+    );
   }
 
   // ------------------------------------------------------------------
-  // 2. Fire Historical + Realtime GA4 requests in parallel
+  // Step 2 — Fire Historical + Realtime GA4 requests in parallel
   // ------------------------------------------------------------------
   const analyticsClient = getAnalyticsClient();
 
   // GA4 truncates User Property values at 36 characters.
-  // Use BEGINS_WITH so long slugs still match.
+  // Using BEGINS_WITH + a 36-char prefix guarantees a match even for
+  // long slugs (e.g. /research/managing-pensions-for-the-future-2026).
   const slugPrefix = slug.substring(0, 36);
 
   const [historicalResult, realtimeResult] = await Promise.allSettled([
-    // --- Historical: last 30 days ---
+
+    // ── Historical: last 30 days ──────────────────────────────────────
+    // Three dimensions mean the API returns one row per unique
+    // (pagePath × sessionSource × country) combination.
+    // We must loop and aggregate all rows into totals ourselves.
     analyticsClient.runReport({
       property: `properties/${propertyId}`,
       dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
       dimensions: [
-        { name: 'sessionSource' },
-        { name: 'country' },
-        { name: 'customEvent:kontent_codename' },
+        { name: 'pagePath' },       // dim[0] — used as the filter field
+        { name: 'sessionSource' },  // dim[1] — traffic source breakdown
+        { name: 'country' },        // dim[2] — country breakdown
       ],
       metrics: [
-        { name: 'screenPageViews' },
-        { name: 'totalUsers' },
-        { name: 'userEngagementDuration' },
+        { name: 'screenPageViews' },       // metric[0] — total page views
+        { name: 'activeUsers' },           // metric[1] — unique users
+        { name: 'userEngagementDuration' },// metric[2] — foreground time (seconds)
       ],
       dimensionFilter: {
         filter: {
-          fieldName: 'customEvent:kontent_codename',
-          stringFilter: { matchType: 'EXACT', value: codename },
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'EXACT', value: slug },
         },
       },
     }),
 
-    // --- Realtime: last 30 minutes ---
+    // ── Realtime: last 30 minutes ─────────────────────────────────────
+    // Dimension customUser:current_page_path is a GA4 User Property that
+    // your website must populate: gtag('set','user_properties',{current_page_path: …})
     analyticsClient.runRealtimeReport({
       property: `properties/${propertyId}`,
       dimensions: [{ name: 'customUser:current_page_path' }],
-      metrics: [{ name: 'activeUsers' }],
+      metrics:   [{ name: 'activeUsers' }],
       dimensionFilter: {
         filter: {
           fieldName: 'customUser:current_page_path',
@@ -136,15 +150,22 @@ export default async function handler(req, res) {
         },
       },
     }),
+
   ]);
 
   // ------------------------------------------------------------------
-  // 3. Aggregate Historical rows
+  // Step 3 — Aggregate Historical rows
+  //
+  // Because we query with three dimensions, the GA4 API returns a
+  // separate row for every (pagePath, source, country) combination.
+  // We sum across all rows to build grand totals, and separately
+  // accumulate per-source and per-country view counts for the Top 3
+  // lists.
   // ------------------------------------------------------------------
-  let totalViews = 0;
-  let totalUsers = 0;
+  let totalViews             = 0;
+  let totalUsers             = 0;
   let totalEngagementSeconds = 0;
-  const sourceCounts = {};
+  const sourceCounts  = {};
   const countryCounts = {};
 
   if (historicalResult.status === 'fulfilled') {
@@ -152,24 +173,30 @@ export default async function handler(req, res) {
     const rows = report.rows ?? [];
 
     for (const row of rows) {
-      const source = row.dimensionValues?.[0]?.value ?? '(direct)';
-      const country = row.dimensionValues?.[1]?.value ?? 'Unknown';
-      const views = parseInt(row.metricValues?.[0]?.value ?? '0', 10);
-      const users = parseInt(row.metricValues?.[1]?.value ?? '0', 10);
+      // Dimension values (pagePath is dim[0] — we don't need its value here)
+      const source  = row.dimensionValues?.[1]?.value ?? '(direct)';
+      const country = row.dimensionValues?.[2]?.value ?? 'Unknown';
+
+      // Metric values
+      const views             = parseInt(row.metricValues?.[0]?.value ?? '0', 10);
+      const users             = parseInt(row.metricValues?.[1]?.value ?? '0', 10);
       const engagementSeconds = parseFloat(row.metricValues?.[2]?.value ?? '0');
 
-      totalViews += views;
-      totalUsers += users;
+      // Grand totals
+      totalViews             += views;
+      totalUsers             += users;
       totalEngagementSeconds += engagementSeconds;
 
-      sourceCounts[source] = (sourceCounts[source] ?? 0) + views;
+      // Per-dimension buckets (keyed by views for ranking)
+      sourceCounts[source]   = (sourceCounts[source]   ?? 0) + views;
       countryCounts[country] = (countryCounts[country] ?? 0) + views;
     }
   } else {
-    console.error('Historical GA4 request failed:', historicalResult.reason);
+    console.error('Historical GA4 request failed:', historicalResult.reason?.message);
   }
 
-  const avgEngagementSeconds = totalViews > 0 ? totalEngagementSeconds / totalViews : 0;
+  // Average engagement time = Total Duration ÷ Total Users
+  const avgEngagementSeconds = totalUsers > 0 ? totalEngagementSeconds / totalUsers : 0;
 
   const topSources = Object.entries(sourceCounts)
     .sort((a, b) => b[1] - a[1])
@@ -182,34 +209,35 @@ export default async function handler(req, res) {
     .map(([country, views]) => ({ country, views }));
 
   // ------------------------------------------------------------------
-  // 4. Aggregate Realtime rows
+  // Step 4 — Aggregate Realtime rows
   // ------------------------------------------------------------------
   let activeUsers = 0;
 
   if (realtimeResult.status === 'fulfilled') {
     const [report] = realtimeResult.value;
-    const rows = report.rows ?? [];
-    for (const row of rows) {
+    for (const row of report.rows ?? []) {
       activeUsers += parseInt(row.metricValues?.[0]?.value ?? '0', 10);
     }
   } else {
-    console.error('Realtime GA4 request failed:', realtimeResult.reason);
+    console.error('Realtime GA4 request failed:', realtimeResult.reason?.message);
   }
 
   // ------------------------------------------------------------------
-  // 5. Build GA4 deep-link for convenience
+  // Step 5 — Build a deep-link back to GA4 for the editor
   // ------------------------------------------------------------------
-  const gaLink = `https://analytics.google.com/analytics/web/#/p${propertyId}/reports/explorer?params=_u..nav%3Dmaui`;
+  const gaLink =
+    `https://analytics.google.com/analytics/web/#/p${propertyId}/reports/explorer` +
+    `?params=_u..nav%3Dmaui`;
 
   // ------------------------------------------------------------------
-  // 6. Return response
+  // Step 6 — Return the response
   // ------------------------------------------------------------------
   return res.status(200).json({
     slug,
     historical: {
-      views: totalViews,
-      users: totalUsers,
-      avgEngagementTime: formatSeconds(avgEngagementSeconds),
+      views:                totalViews,
+      users:                totalUsers,
+      avgEngagementTime:    formatSeconds(avgEngagementSeconds),
       avgEngagementSeconds: Math.round(avgEngagementSeconds),
       topSources,
       topCountries,
