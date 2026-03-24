@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:kontent.ai)",
+      "Bash(git checkout 8d8d7a9 -- index.html)"
+    ]
+  }
+}
