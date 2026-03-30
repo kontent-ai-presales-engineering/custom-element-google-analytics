@@ -626,12 +626,12 @@
       }
 
       /* Populate item metadata in the header */
-      var codename = context.item.codename;
+      var itemId = context.item.id;
       document.getElementById('item-name').textContent = context.item.name;
-      document.getElementById('item-codename').textContent = codename;
+      document.getElementById('item-id').textContent = itemId;
 
       /* Fetch analytics */
-      var url = apiEndpoint + '?codename=' + encodeURIComponent(codename);
+      var url = apiEndpoint + '?itemId=' + encodeURIComponent(itemId);
 
       fetch(url)
         .then(function (res) {
