@@ -401,9 +401,9 @@
     <div class="header">
       <h1>GA4 Analytics</h1>
       <div class="item-meta">
-        <span id="item-name"></span>
+        <span id="item-id"></span>
         <span>·</span>
-        <code class="item-code" id="item-codename"></code>
+        <code class="item-code" id="item-id"></code>
       </div>
     </div>
 
@@ -632,15 +632,13 @@
 
       /* Fetch analytics */
       var url = apiEndpoint + '?itemId=' + encodeURIComponent(itemId);
-      console.log(url)
+
       fetch(url)
         .then(function (res) {
-          console.log(res)
           if (!res.ok) throw new Error('Request failed: ' + res.status + ' ' + res.statusText);
           return res.json();
         })
         .then(function (data) {
-          console.log(data)
           /* ── Stat cards ── */
           var h = data.historical || {};
           var rt = data.realtime || {};
