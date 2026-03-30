@@ -4,27 +4,19 @@ import { createDeliveryClient } from '@kontent-ai/delivery-sdk';
 // ---------------------------------------------------------------------------
 // TYPE_URL_RESOLVERS
 // Maps a Kontent.ai content type codename to the live URL path for that item.
-// The resolver receives the item's own codename and returns a path string.
+// Each resolver receives the full content item and returns a path string.
 // Add or adjust entries to match your website's routing conventions.
 // ---------------------------------------------------------------------------
 const TYPE_URL_RESOLVERS = {
-  article:    (codename) => `/articles/${codename.replace(/_/g, '-')}`,
-  blog:       (codename) => `/blog/${codename.replace(/_/g, '-')}`,
-  page:       (codename) => `/${codename.replace(/_/g, '-')}`,
+  article:    (item) => `/articles/${item.elements.url_slug?.value}`,
+  blog_post:  (item) => `/blog/${item.elements.url_slug?.value}`,
+  page:       (item) => `/${item.elements.url?.value}`,
+  service:    (item) => `/services/${item.elements.url_slug?.value}`,
+  microsite:  (item) => `/microsite/${item.elements.url?.value}`,
+  person:     (item) => `/our-team/${item.system.codename}`,
 };
 
-/**
- * Resolve the URL slug for a content item.
- * Falls back to a plain /<codename> path when no resolver is registered.
- *
- * @param {string} codename  - The item's Kontent.ai codename.
- * @param {string} contentType - The item's content type codename.
- * @returns {string} Absolute path starting with "/".
- */
-function resolveSlug(codename, contentType) {
-  const resolver = TYPE_URL_RESOLVERS[contentType];
-  return resolver ? resolver(codename) : `/${codename.replace(/_/g, '-')}`;
-}
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Clients
@@ -35,6 +27,7 @@ function getAnalyticsClient() {
   const keyJson = process.env.GA_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error('GA_SERVICE_ACCOUNT_KEY is not set');
   const credentials = JSON.parse(keyJson);
+  credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
   return new BetaAnalyticsDataClient({ credentials });
 }
 
@@ -43,16 +36,6 @@ function getDeliveryClient() {
   const environmentId = process.env.VITE_ENVIRONMENT_ID;
   if (!environmentId) throw new Error('VITE_ENVIRONMENT_ID is not set');
   return createDeliveryClient({ environmentId });
-}
-
-// ---------------------------------------------------------------------------
-// Helper: format raw seconds into "Xm Ys"
-// ---------------------------------------------------------------------------
-function formatSeconds(totalSeconds) {
-  const s = Math.round(totalSeconds);
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,38 +52,46 @@ export default async function handler(req, res) {
   }
 
   // ------------------------------------------------------------------
-  // Guard: required query param
+  // Guard: required query params
   // ------------------------------------------------------------------
-  const { codename } = req.query;
-  if (!codename) {
-    return res.status(400).json({ error: 'Missing required query parameter: codename' });
+  const { itemId, language = 'default' } = req.query;
+
+  if (!itemId || !UUID_REGEX.test(itemId)) {
+    return res.status(400).json({ error: 'Missing or invalid itemId (expected a UUID).' });
   }
 
   const propertyId = process.env.GA_PROPERTY_ID;
   if (!propertyId) {
-    return res.status(500).json({ error: 'GA_PROPERTY_ID is not set on the server' });
+    return res.status(500).json({ error: 'GA_PROPERTY_ID is not set on the server.' });
   }
 
   // ------------------------------------------------------------------
-  // Step 1 — Resolve the content item's URL slug from Kontent.ai
+  // Step 1 — Fetch the content item by ID and resolve its URL slug
   // ------------------------------------------------------------------
-  let slug = `/${codename.replace(/_/g, '-')}`;
-
+  let item;
   try {
     const deliveryClient = getDeliveryClient();
-    const response = await deliveryClient.item(codename).toPromise();
-    const contentType = response.data.item.system.type;
-    slug = resolveSlug(codename, contentType);
+    const response = await deliveryClient
+      .items()
+      .equalsFilter('system.id', itemId)
+      .languageParameter(language)
+      .toPromise();
+
+    item = response.data.items[0];
+    if (!item) throw new Error('Not found');
   } catch {
-    // Non-fatal: fall back to the derived slug if Kontent.ai is unreachable
-    // or the item does not exist yet.
-    console.warn(
-      `Could not resolve slug from Kontent.ai for codename "${codename}". Using fallback: "${slug}"`
-    );
+    return res.status(404).json({ error: `Content item '${itemId}' not found.` });
   }
 
+  const urlResolver = TYPE_URL_RESOLVERS[item.system.type];
+  if (!urlResolver) {
+    return res.status(422).json({ error: `No URL resolver registered for content type '${item.system.type}'.` });
+  }
+
+  const slug = urlResolver(item);
+
   // ------------------------------------------------------------------
-  // Step 2 — Fire Historical + Realtime GA4 requests in parallel
+  // Step 2 — Fire Historical + Daily + Realtime GA4 requests in parallel
   // ------------------------------------------------------------------
   const analyticsClient = getAnalyticsClient();
 
@@ -109,7 +100,7 @@ export default async function handler(req, res) {
   // long slugs (e.g. /research/managing-pensions-for-the-future-2026).
   const slugPrefix = slug.substring(0, 36);
 
-  const [historicalResult, realtimeResult] = await Promise.allSettled([
+  const [historicalResult, dailyResult, realtimeResult] = await Promise.allSettled([
 
     // ── Historical: last 30 days ──────────────────────────────────────
     // Three dimensions mean the API returns one row per unique
@@ -124,9 +115,9 @@ export default async function handler(req, res) {
         { name: 'country' },        // dim[2] — country breakdown
       ],
       metrics: [
-        { name: 'screenPageViews' },       // metric[0] — total page views
-        { name: 'activeUsers' },           // metric[1] — unique users
-        { name: 'userEngagementDuration' },// metric[2] — foreground time (seconds)
+        { name: 'screenPageViews' },        // metric[0] — total page views
+        { name: 'activeUsers' },            // metric[1] — unique users
+        { name: 'userEngagementDuration' }, // metric[2] — foreground time (seconds)
       ],
       dimensionFilter: {
         filter: {
@@ -134,6 +125,24 @@ export default async function handler(req, res) {
           stringFilter: { matchType: 'EXACT', value: slug },
         },
       },
+    }),
+
+    // ── Daily breakdown: last 30 days ─────────────────────────────────
+    analyticsClient.runReport({
+      property: `properties/${propertyId}`,
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dimensions: [
+        { name: 'date' },
+        { name: 'pagePath' },
+      ],
+      metrics: [{ name: 'screenPageViews' }],
+      dimensionFilter: {
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'EXACT', value: slug },
+        },
+      },
+      orderBys: [{ dimension: { dimensionName: 'date' } }],
     }),
 
     // ── Realtime: last 30 minutes ─────────────────────────────────────
@@ -153,13 +162,18 @@ export default async function handler(req, res) {
 
   ]);
 
+  if (historicalResult.status === 'rejected') {
+    console.error('Historical GA4 request failed:', historicalResult.reason?.message);
+    return res.status(500).json({ error: 'Historical fetch failed.' });
+  }
+
   // ------------------------------------------------------------------
   // Step 3 — Aggregate Historical rows
   //
   // Because we query with three dimensions, the GA4 API returns a
   // separate row for every (pagePath, source, country) combination.
   // We sum across all rows to build grand totals, and separately
-  // accumulate per-source and per-country view counts for the Top 3
+  // accumulate per-source and per-country user counts for the Top 3
   // lists.
   // ------------------------------------------------------------------
   let totalViews             = 0;
@@ -168,77 +182,86 @@ export default async function handler(req, res) {
   const sourceCounts  = {};
   const countryCounts = {};
 
-  if (historicalResult.status === 'fulfilled') {
-    const [report] = historicalResult.value;
-    const rows = report.rows ?? [];
+  const [hReport] = historicalResult.value;
+  for (const row of hReport.rows ?? []) {
+    const source  = row.dimensionValues?.[1]?.value ?? '(direct)';
+    const country = row.dimensionValues?.[2]?.value ?? 'Unknown';
 
-    for (const row of rows) {
-      // Dimension values (pagePath is dim[0] — we don't need its value here)
-      const source  = row.dimensionValues?.[1]?.value ?? '(direct)';
-      const country = row.dimensionValues?.[2]?.value ?? 'Unknown';
+    const views             = parseInt(row.metricValues?.[0]?.value ?? '0', 10);
+    const users             = parseInt(row.metricValues?.[1]?.value ?? '0', 10);
+    const engagementSeconds = parseFloat(row.metricValues?.[2]?.value ?? '0');
 
-      // Metric values
-      const views             = parseInt(row.metricValues?.[0]?.value ?? '0', 10);
-      const users             = parseInt(row.metricValues?.[1]?.value ?? '0', 10);
-      const engagementSeconds = parseFloat(row.metricValues?.[2]?.value ?? '0');
+    totalViews             += views;
+    totalUsers             += users;
+    totalEngagementSeconds += engagementSeconds;
 
-      // Grand totals
-      totalViews             += views;
-      totalUsers             += users;
-      totalEngagementSeconds += engagementSeconds;
-
-      // Per-dimension buckets (keyed by views for ranking)
-      sourceCounts[source]   = (sourceCounts[source]   ?? 0) + views;
-      countryCounts[country] = (countryCounts[country] ?? 0) + views;
-    }
-  } else {
-    console.error('Historical GA4 request failed:', historicalResult.reason?.message);
+    sourceCounts[source]   = (sourceCounts[source]   ?? 0) + users;
+    countryCounts[country] = (countryCounts[country] ?? 0) + users;
   }
 
-  // Average engagement time = Total Duration ÷ Total Users
   const avgEngagementSeconds = totalUsers > 0 ? totalEngagementSeconds / totalUsers : 0;
 
   const topSources = Object.entries(sourceCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([source, views]) => ({ source, views }));
+    .map(([source, userCount]) => ({ source, userCount }));
 
   const topCountries = Object.entries(countryCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([country, views]) => ({ country, views }));
+    .map(([country, userCount]) => ({ country, userCount }));
 
   // ------------------------------------------------------------------
-  // Step 4 — Aggregate Realtime rows
+  // Step 4 — Process Daily rows
+  // ------------------------------------------------------------------
+  const dailyViews = [];
+
+  if (dailyResult.status === 'fulfilled') {
+    const [dReport] = dailyResult.value;
+    for (const row of dReport.rows ?? []) {
+      const raw = row.dimensionValues?.[0]?.value ?? ''; // "YYYYMMDD"
+      const date = raw.length === 8
+        ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+        : raw;
+      dailyViews.push({ date, views: parseInt(row.metricValues?.[0]?.value ?? '0', 10) });
+    }
+  } else {
+    console.warn('Daily GA4 request failed:', dailyResult.reason?.message);
+  }
+
+  // ------------------------------------------------------------------
+  // Step 5 — Aggregate Realtime rows
   // ------------------------------------------------------------------
   let activeUsers = 0;
 
   if (realtimeResult.status === 'fulfilled') {
-    const [report] = realtimeResult.value;
-    for (const row of report.rows ?? []) {
+    const [rReport] = realtimeResult.value;
+    for (const row of rReport.rows ?? []) {
       activeUsers += parseInt(row.metricValues?.[0]?.value ?? '0', 10);
     }
   } else {
-    console.error('Realtime GA4 request failed:', realtimeResult.reason?.message);
+    console.warn('Realtime GA4 request failed:', realtimeResult.reason?.message);
   }
 
   // ------------------------------------------------------------------
-  // Step 5 — Build a deep-link back to GA4 for the editor
+  // Step 6 — Build a deep-link back to GA4 for the editor
   // ------------------------------------------------------------------
+  const filterJson = JSON.stringify([{ field: 'pagePath', expression: slug }]);
+  const gaParams = `_u..nav=default&_r.explorerCard..filter=${filterJson}`;
   const gaLink =
     `https://analytics.google.com/analytics/web/#/p${propertyId}/reports/explorer` +
-    `?params=_u..nav%3Dmaui`;
+    `?params=${encodeURIComponent(gaParams)}`;
 
   // ------------------------------------------------------------------
-  // Step 6 — Return the response
+  // Step 7 — Return the response
   // ------------------------------------------------------------------
   return res.status(200).json({
     slug,
     historical: {
-      views:                totalViews,
-      users:                totalUsers,
-      avgEngagementTime:    formatSeconds(avgEngagementSeconds),
-      avgEngagementSeconds: Math.round(avgEngagementSeconds),
+      views:             totalViews,
+      users:             totalUsers,
+      avgEngagementTime: Math.round(avgEngagementSeconds),
+      dailyViews,
       topSources,
       topCountries,
     },
