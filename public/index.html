@@ -442,17 +442,17 @@
       root.appendChild(renderLoading());
       CustomElement.setHeight(100);
 
-      // Item codename guard
-      const codename = element.item?.codename;
-      if (!codename) {
+      // Item id guard
+      const itemId = element.item?.id;
+      if (!itemId) {
         root.innerHTML = '';
-        root.appendChild(renderError('Could not determine the content item codename.'));
+        root.appendChild(renderError('Could not determine the content item id.'));
         CustomElement.setHeight(80);
         return;
       }
 
       try {
-        const url      = `${apiEndpoint}?codename=${encodeURIComponent(codename)}`;
+        const url      = `${apiEndpoint}?itemId=${encodeURIComponent(itemId)}`;
         const response = await fetch(url);
 
         if (!response.ok) {
