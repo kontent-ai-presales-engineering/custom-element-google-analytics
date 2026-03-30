@@ -625,8 +625,6 @@
         return;
       }
 
-      console.log(context)
-      console.log(apiEndpoint)
       /* Populate item metadata in the header */
       var itemId = context.item.id;
       document.getElementById('item-name').textContent = context.item.name;
@@ -634,13 +632,15 @@
 
       /* Fetch analytics */
       var url = apiEndpoint + '?itemId=' + encodeURIComponent(itemId);
-
+      console.log(url)
       fetch(url)
         .then(function (res) {
+          console.log(res)
           if (!res.ok) throw new Error('Request failed: ' + res.status + ' ' + res.statusText);
           return res.json();
         })
         .then(function (data) {
+          console.log(data)
           /* ── Stat cards ── */
           var h = data.historical || {};
           var rt = data.realtime || {};
