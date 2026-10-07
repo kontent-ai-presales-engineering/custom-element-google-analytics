@@ -88,6 +88,14 @@
       border-radius: 8px;
     }
 
+    #state-not-published {
+      display: none;
+      padding: 14px 16px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+    }
+
     #state-dashboard {
       display: none;
     }
@@ -394,6 +402,17 @@
     <div id="error-message" style="font-size:12px; color:#ef4444;"></div>
   </div>
 
+  <!-- ②b Not published state (API returned 404) ─────────────────────── -->
+  <div id="state-not-published">
+    <div style="font-size:13px; font-weight:600; color:#1d4ed8; margin-bottom:4px;">
+      This content is not published yet
+    </div>
+    <div style="font-size:12px; color:#3b82f6; line-height:1.5;">
+      Analytics will appear here once the content item is published and visitors start viewing it.
+      Note that new data can take 24–48 hours to show up in GA4.
+    </div>
+  </div>
+
   <!-- ③ Dashboard ──────────────────────────────────────────────────── -->
   <div id="state-dashboard">
 
@@ -528,7 +547,7 @@
 
     /** Show one state panel and hide the others. */
     function showState(id) {
-      ['state-loading', 'state-error', 'state-dashboard'].forEach(function (s) {
+      ['state-loading', 'state-error', 'state-not-published', 'state-dashboard'].forEach(function (s) {
         document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
       });
     }
@@ -634,10 +653,18 @@
 
       fetch(url)
         .then(function (res) {
+          /* 404 = item has no published page yet, show a friendly notice instead of an error */
+          if (res.status === 404) return null;
           if (!res.ok) throw new Error('Request failed: ' + res.status + ' ' + res.statusText);
           return res.json();
         })
         .then(function (data) {
+          if (data === null) {
+            showState('state-not-published');
+            syncHeight();
+            return;
+          }
+
           /* ── Stat cards ── */
           var h = data.historical || {};
           var rt = data.realtime || {};
@@ -674,5 +701,4 @@
   </script>
 
 </body>
-
 </html>
